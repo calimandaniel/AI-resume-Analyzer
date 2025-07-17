@@ -1,211 +1,27 @@
 import streamlit as st
-from io import BytesIO
 import pandas as pd
-import tempfile
-import os
-import re
 from typing import List, Dict
-import numpy as np
 
-import asyncio
-from asyncio import new_event_loop, set_event_loop, run
+from services import DocumentService, VectorService
+from config import settings
 
-# Updated LangChain imports
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_postgres import PGVector
-# Existing imports
-
-# Load environment variables
-from dotenv import load_dotenv
-current_dir = os.path.dirname(os.path.abspath(__file__))
-src_root = os.path.dirname(current_dir)
-env_path = os.path.join(src_root, '.env')
-
-if os.path.exists(env_path):
-    load_dotenv(env_path)
-    print(f"Loaded .env from: {env_path}")
-else:
-    load_dotenv()
-    print("Using default .env loading")
-
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-    st.error("Google Generative AI not available. Install with: pip install google-generativeai")
-    
 class ResumeUploader:
     def __init__(self):
+        self.document_service = DocumentService()
+        self.vector_service = VectorService()
         self.uploaded_files = []
-        self.processed_documents = []
-        self.chunks = []
-        self.embeddings = []
-        self.embedding_method = "langchain_gemini"
-        
-        # LangChain components
-        self.langchain_embeddings = None
-        self.text_splitter = None
-        self.vectorstore = None
-        
-        # Initialize LangChain components
-        self._initialize_langchain_components()
-    
-    def _initialize_langchain_components(self):
-        """Initialize LangChain components"""
-        try:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if api_key:
-                # Create a coroutine function for async operations
-                async def initialize_async_components():
-                    # Initialize embeddings
-                    embeddings = GoogleGenerativeAIEmbeddings(
-                        model="models/embedding-001",
-                        google_api_key=api_key
-                    )
-                    
-                    # Initialize vector store if database URL exists
-                    vectorstore = None
-                    db_url = os.getenv("DATABASE_URL")
-                    if db_url:
-                        vectorstore = PGVector(
-                            connection=db_url,
-                            embeddings=embeddings,
-                            collection_name="resume_langchain"
-                        )
-                    
-                    return embeddings, vectorstore
-                
-                # Create and run event loop
-                loop = new_event_loop()
-                set_event_loop(loop)
-                embeddings, vectorstore = run(initialize_async_components())
-                
-                # Assign to instance variables
-                self.langchain_embeddings = embeddings
-                self.vectorstore = vectorstore
-                  
-                # Initialize text splitter (no async needed)
-                self.text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=400,  # tokens approximately
-                    chunk_overlap=50,
-                    length_function=len,
-                    separators=["\n\n", "\n", ". ", " ", ""]
-                )
-            
-        except Exception as e:
-            st.warning(f"LangChain initialization failed: {str(e)}")
-            self.langchain_embeddings = None
-            
-    def load_documents_with_langchain(self, uploaded_files) -> List[Document]:
-        """Load documents using LangChain loaders"""
-        documents = []
-        
-        for uploaded_file in uploaded_files:
-            try:
-                # Reset file pointer to beginning
-                uploaded_file.seek(0)
-                
-                # Create temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
-                    tmp_file.write(uploaded_file.read())
-                    tmp_file_path = tmp_file.name
-                
-                # Load document based on file type
-                if uploaded_file.type == "application/pdf":
-                    loader = PyPDFLoader(tmp_file_path)
-                elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                    loader = Docx2txtLoader(tmp_file_path)
-                elif uploaded_file.type == "text/plain":
-                    loader = TextLoader(tmp_file_path, encoding='utf-8')
-                else:
-                    st.warning(f"Unsupported file type: {uploaded_file.type}")
-                    continue
-                
-                # Load documents
-                docs = loader.load()
-                
-                # Add metadata
-                for doc in docs:
-                    doc.metadata.update({
-                        'source': uploaded_file.name,
-                        'file_type': uploaded_file.type,
-                        'original_filename': uploaded_file.name
-                    })
-                    documents.append(doc)
-                
-                # Clean up
-                os.unlink(tmp_file_path)
-                st.success(f"Loaded with LangChain: {uploaded_file.name}")
-                
-            except Exception as e:
-                st.error(f"Error loading {uploaded_file.name}: {str(e)}")
-        
-        return documents
-
-    def process_documents_with_langchain(self, documents: List[Document], chunk_size: int = 400, overlap: int = 50) -> List[Document]:
-        """Process documents using LangChain text splitter"""
-        try:
-            # Update text splitter parameters
-            self.text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=chunk_size * 4,  # Convert tokens to characters 
-                chunk_overlap=overlap * 4,
-                length_function=len,
-                separators=["\n\n", "\n", ". ", " ", ""]
-            )
-            
-            # Split documents
-            chunks = self.text_splitter.split_documents(documents)
-            
-            # Add additional metadata
-            for i, chunk in enumerate(chunks):
-                chunk.metadata.update({
-                    'chunk_id': i,
-                    'chunk_size': len(chunk.page_content),
-                    'chunk_tokens': len(chunk.page_content.split()),
-                    'processing_method': 'langchain'
-                })
-            
-            st.info(f"Split {len(documents)} documents into {len(chunks)} chunks.")
-            return chunks
-            
-        except Exception as e:
-            st.error(f"Error processing documents with LangChain: {str(e)}")
-            return []
-
-    def save_to_langchain_vectorstore(self, chunks: List[Document]) -> bool:
-        """Save chunks to LangChain vector store"""
-        try:
-            if not self.vectorstore:
-                st.error("Vector store not initialized")
-                return False
-            
-            with st.spinner(f"Saving {len(chunks)} chunks to LangChain vector store..."):
-                # Add documents to vector store
-                self.vectorstore.add_documents(chunks)
-            
-            st.success(f"✅ Saved {len(chunks)} chunks to LangChain vector store")
-            return True
-            
-        except Exception as e:
-            st.error(f"❌ Error saving to LangChain vector store: {str(e)}")
-            return False
         
     def upload_resume(self):
         st.header("Upload Resumes")
         st.write("Upload multiple resume files (PDF, DOCX, or TXT format)")
         
-        col1, col2 = st.columns([1, 1])
         # Chunking parameters
         st.subheader("Chunking Configuration")
         col1, col2 = st.columns(2)
         with col1:
-            chunk_size = st.slider("Chunk Size (tokens)", 100, 500, 400, 25)
+            chunk_size = st.slider("Chunk Size (tokens)", 100, 500, settings.chunk_size, 25)
         with col2:
-            overlap_size = st.slider("Overlap Size (tokens)", 0, 100, 50, 10)
+            overlap_size = st.slider("Overlap Size (tokens)", 0, 100, settings.chunk_overlap, 10)
         
         uploaded_files = st.file_uploader(
             "Choose resume files", 
@@ -216,74 +32,83 @@ class ResumeUploader:
         if uploaded_files:
             st.success(f"Successfully uploaded {len(uploaded_files)} file(s)!")
             
-            # Clear previous uploads
-            self.uploaded_files = []
-            self.processed_documents = []
-            self.chunks = []
-            self.embeddings = []
-            
+            # Display uploaded files
             for uploaded_file in uploaded_files:
-                st.write(f"📄 {uploaded_file.name}")
-                
-                self.uploaded_files.append({
-                    'name': uploaded_file.name,
-                    'content': uploaded_file,
-                    'type': uploaded_file.type
-                })
+                st.write(f"{uploaded_file.name}")
             
-            # Single LangChain processing button
-            if st.button("Process with LangChain"):
-                self._process_with_langchain(uploaded_files, chunk_size, overlap_size)
+            # Process with services
+            if st.button("Process Documents"):
+                self._process_documents(uploaded_files, chunk_size, overlap_size)
 
-    def _process_with_langchain(self, uploaded_files, chunk_size: int, overlap_size: int):
-        """Process documents using LangChain"""
+    def _process_documents(self, uploaded_files, chunk_size: int, overlap_size: int):
+        """Process documents using the modular services"""
         
-        if not self.langchain_embeddings:
-            st.error("LangChain embeddings not initialized. Please check API key.")
+        if not self._check_services_ready():
             return
         
         progress_bar = st.progress(0)
         
         try:
-            # Step 1: Load documents with LangChain
-            st.info("Loading documents with LangChain...")
-            documents = self.load_documents_with_langchain(uploaded_files)
+            # Step 1: Load documents using DocumentService
+            st.info("Loading documents...")
+            documents = self.document_service.load_documents(uploaded_files)
             progress_bar.progress(0.3)
             
             if not documents:
                 st.error("No documents were loaded successfully")
                 return
             
-            # Step 2: Process and chunk documents
-            st.info("Chunking documents with LangChain...")
-            chunks = self.process_documents_with_langchain(documents, chunk_size, overlap_size)
+            # Step 2: Chunk documents using DocumentService
+            st.info("Processing and chunking documents...")
+            chunks = self.document_service.chunk_documents(
+                documents, 
+                chunk_size=chunk_size, 
+                overlap=overlap_size
+            )
             progress_bar.progress(0.6)
             
             if not chunks:
                 st.error("No chunks were created")
                 return
             
-            # Step 3: Save to vector store
-            st.info("Saving to LangChain vector store...")
-            success = self.save_to_langchain_vectorstore(chunks)
+            # Step 3: Save to vector store using VectorService
+            st.info("Saving to vector store...")
+            success = self.vector_service.add_documents(chunks)
             progress_bar.progress(0.9)
             
             if success:
                 progress_bar.progress(1.0)
-                
-                # Display results
-                self._display_langchain_results(documents, chunks)
-                
+                self._display_results(documents, chunks)
             else:
                 st.error("Failed to save to vector store")
         
         except Exception as e:
-            st.error(f"Error in LangChain processing: {str(e)}")
+            st.error(f"Error processing documents: {str(e)}")
 
+    def _check_services_ready(self) -> bool:
+        """Check if all required services are ready"""
+        if not self.vector_service.is_ready():
+            st.error("Vector service not ready. Please check your environment variables.")
+            
+            # Show what's missing
+            with st.expander("Configuration Status"):
+                if not settings.google_api_key:
+                    st.error("GOOGLE_API_KEY not found")
+                else:
+                    st.success("GOOGLE_API_KEY configured")
+                
+                if not settings.database_url:
+                    st.error("DATABASE_URL not found")
+                else:
+                    st.success("DATABASE_URL configured")
+                    
+            return False
+        
+        return True
 
-    def _display_langchain_results(self, documents: List[Document], chunks: List[Document]):
-        """Display results from LangChain processing"""
-        st.subheader("🎉 LangChain Processing Results")
+    def _display_results(self, documents: List, chunks: List):
+        """Display processing results"""
+        st.subheader("Processing Results")
         
         # Summary metrics
         col1, col2, col3, col4 = st.columns(4)
@@ -299,13 +124,7 @@ class ResumeUploader:
             st.metric("Avg Chunk Size", f"{avg_chunk_size:.0f}")
         
         # Document summary
-        doc_summary = {}
-        for chunk in chunks:
-            source = chunk.metadata.get('source', 'Unknown')
-            if source not in doc_summary:
-                doc_summary[source] = {'chunks': 0, 'total_chars': 0}
-            doc_summary[source]['chunks'] += 1
-            doc_summary[source]['total_chars'] += len(chunk.page_content)
+        doc_summary = self._build_document_summary(chunks)
         
         st.subheader("Document Summary")
         summary_data = []
@@ -322,7 +141,24 @@ class ResumeUploader:
         st.dataframe(df, use_container_width=True)
         
         # Sample chunks viewer
-        with st.expander("🔍 View Sample Chunks"):
+        self._display_sample_chunks(chunks, doc_summary)
+        
+        st.success(f"Successfully processed {len(documents)} documents into {len(chunks)} chunks!")
+
+    def _build_document_summary(self, chunks: List) -> Dict[str, Dict]:
+        """Build summary statistics by document"""
+        doc_summary = {}
+        for chunk in chunks:
+            source = chunk.metadata.get('source', 'Unknown')
+            if source not in doc_summary:
+                doc_summary[source] = {'chunks': 0, 'total_chars': 0}
+            doc_summary[source]['chunks'] += 1
+            doc_summary[source]['total_chars'] += len(chunk.page_content)
+        return doc_summary
+
+    def _display_sample_chunks(self, chunks: List, doc_summary: Dict):
+        """Display sample chunks for inspection"""
+        with st.expander("View Sample Chunks"):
             if chunks:
                 selected_source = st.selectbox(
                     "Select document:",
@@ -337,8 +173,6 @@ class ResumeUploader:
                         f"Content (Chunk {chunk.metadata.get('chunk_id', i)}):",
                         chunk.page_content,
                         height=150,
-                        key=f"langchain_chunk_{i}"
+                        key=f"chunk_{selected_source}_{i}"
                     )
                     st.json(chunk.metadata)
-        
-        st.success(f"🎉 Successfully processed {len(documents)} documents into {len(chunks)} chunks using LangChain!")

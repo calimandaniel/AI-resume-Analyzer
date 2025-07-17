@@ -18,9 +18,8 @@ class ChatInterface:
             if not self.rag_chatbot.is_ready():
                 return False
             
-            # Try to search for any documents in the database
-            test_results = self.rag_chatbot.vector_store.similarity_search("test", k=1)
-            return len(test_results) > 0
+            # Use the vector service method instead of direct access
+            return self.rag_chatbot.vector_service.has_data()
             
         except Exception as e:
             st.error(f"Error checking database: {str(e)}")
@@ -28,7 +27,7 @@ class ChatInterface:
     
     def run_chat(self):
         st.header("Resume Analyzer Chatbot")
-        st.write("Ask questions about uploaded resumes and job matching using AI-powered analysis")
+        st.write("Ask questions about uploaded resumes and job matching")
         
         # Check if RAG system is ready first
         if not self.rag_chatbot.is_ready():
@@ -48,8 +47,8 @@ class ChatInterface:
                         st.info(f"Database: Connected")
                         st.info(f"Collection: resume_langchain")
                         
-                        # Try to count documents
-                        all_docs = self.rag_chatbot.vector_store.similarity_search("", k=100)
+                        # Use vector service to count documents
+                        all_docs = self.rag_chatbot.vector_service.similarity_search("", k=100)
                         st.info(f"Documents found: {len(all_docs)}")
                         
                         if len(all_docs) == 0:
@@ -60,8 +59,6 @@ class ChatInterface:
                 except Exception as e:
                     st.error(f"Database check error: {str(e)}")
             
-            if st.button("🔄 Refresh and Check Again"):
-                st.experimental_rerun()
             return
         
         # Job description input (optional)
@@ -72,7 +69,7 @@ class ChatInterface:
             placeholder="Example: We are looking for a Senior Python Developer with 5+ years of experience in web development, Django, REST APIs, and machine learning. The candidate should have experience with PostgreSQL, Docker, and cloud platforms like AWS.",
             height=120,
             key="job_desc_input",
-            help="This helps the AI understand what you're looking for, but you can ask questions without it too."
+            help="This helps improve candidate matching."
         )
         
         # Update session state
@@ -82,8 +79,8 @@ class ChatInterface:
         # Quick database info
         with st.expander("Database Info"):
             try:
-                # Get some basic stats
-                sample_docs = self.rag_chatbot.vector_store.similarity_search("", k=20)
+                # Use vector service to get stats
+                sample_docs = self.rag_chatbot.vector_service.similarity_search("", k=20)
                 unique_sources = list(set([doc.metadata.get('source', 'Unknown') for doc in sample_docs]))
                 
                 st.write(f"**Candidates in database:** {len(unique_sources)}")
