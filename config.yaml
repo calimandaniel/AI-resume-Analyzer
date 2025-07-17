@@ -1,0 +1,22 @@
+database:
+  type: "sqlite"
+  name: "resume_analyzer.db"
+  path: "data/resume_analyzer.db"
+
+model:
+  name: "bert-base-uncased"
+  max_length: 512
+
+upload:
+  allowed_file_types:
+    - "pdf"
+    - "txt"
+  max_file_size: 5MB
+
+logging:
+  level: "INFO"
+  file: "logs/app.log"
+
+analytics:
+  enable: true
+  metrics_endpoint: "http://localhost:5000/metrics"

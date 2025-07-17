@@ -1,0 +1,14 @@
+[general]
+email = "your_email@example.com"
+displayMode = "expanded"
+
+[theme]
+primaryColor = "#F39C12"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F7F7"
+textColor = "#333333"
+font = "sans serif"
+
+[server]
+enableCORS = false
+port = 8501
