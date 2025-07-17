@@ -109,7 +109,6 @@ src/
 - Ask natural language questions about candidates:
   - "Who has Python experience?"
   - "Rank candidates for a senior developer role"
-  - "Tell me about John Doe's background"
   - "Compare the top 3 candidates"
 
 ### 3. Advanced Queries
@@ -133,12 +132,6 @@ The system supports complex queries like:
 - Metadata preservation for source tracking
 - Complete candidate profile reconstruction
 - Context-aware prompt generation
-
-### Scalable Architecture
-- Service-oriented design for easy testing and maintenance
-- Centralized configuration management
-- Clean separation between UI, business logic, and data layers
-- Extensible for additional AI models and data sources
 
 ## Configuration
 
