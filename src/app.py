@@ -19,7 +19,7 @@ def main():
     
     app_mode = st.sidebar.selectbox(
         "Choose the app mode", 
-        ["Upload Resumes", "Chatbot", "Analytics Dashboard"]
+        ["Upload Resumes", "Chatbot"]
     )
 
     if app_mode == "Upload Resumes":
