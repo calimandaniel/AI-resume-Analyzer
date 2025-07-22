@@ -81,7 +81,7 @@ class DocumentService:
                     overlap: Optional[int] = None) -> List[Document]:
         """Split documents into chunks"""
         
-        # Create custom splitter if parameters provided
+        # Create custom splitter
         if chunk_size or overlap:
             splitter = RecursiveCharacterTextSplitter(
                 chunk_size=(chunk_size or settings.chunk_size) * 4,

@@ -2,7 +2,6 @@ import streamlit as st
 import sys
 import os
 
-# Add the src directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from components.resume_uploader import ResumeUploader

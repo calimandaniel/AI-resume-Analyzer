@@ -61,8 +61,8 @@ class ChatInterface:
             
             return
         
-        # Job description input (optional)
-        st.subheader("Job Description (Optional)")
+        # Job description input 
+        st.subheader("Job Description")
         job_description = st.text_area(
             "Enter the job description for better candidate matching:",
             value=st.session_state.get('job_description', ''),
@@ -102,8 +102,9 @@ class ChatInterface:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
         
-        # Chat input - completely open ended
-        if prompt := st.chat_input("Ask me anything about the candidates"):
+        # Chat input
+        prompt = st.chat_input("Ask me anything about the candidates")
+        if prompt:  # Check if user entered something
             self._handle_user_input(prompt, job_description)
     
     def _handle_user_input(self, prompt: str, job_description: str):

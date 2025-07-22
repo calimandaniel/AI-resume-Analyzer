@@ -78,7 +78,7 @@ class ResumeUploader:
             
             if success:
                 progress_bar.progress(1.0)
-                self._display_results(documents, chunks)
+                st.success(f"Successfully processed {len(documents)} documents into {len(chunks)} chunks!")
             else:
                 st.error("Failed to save to vector store")
         
@@ -105,74 +105,3 @@ class ResumeUploader:
             return False
         
         return True
-
-    def _display_results(self, documents: List, chunks: List):
-        """Display processing results"""
-        st.subheader("Processing Results")
-        
-        # Summary metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Documents Loaded", len(documents))
-        with col2:
-            st.metric("Total Chunks", len(chunks))
-        with col3:
-            total_chars = sum(len(chunk.page_content) for chunk in chunks)
-            st.metric("Total Characters", f"{total_chars:,}")
-        with col4:
-            avg_chunk_size = total_chars / len(chunks) if chunks else 0
-            st.metric("Avg Chunk Size", f"{avg_chunk_size:.0f}")
-        
-        # Document summary
-        doc_summary = self._build_document_summary(chunks)
-        
-        st.subheader("Document Summary")
-        summary_data = []
-        for source, data in doc_summary.items():
-            summary_data.append({
-                'Filename': source,
-                'Chunks': data['chunks'],
-                'Total Characters': f"{data['total_chars']:,}",
-                'Avg Chunk Size': f"{data['total_chars'] / data['chunks']:.0f}",
-                'Status': 'Processed'
-            })
-        
-        df = pd.DataFrame(summary_data)
-        st.dataframe(df, use_container_width=True)
-        
-        # Sample chunks viewer
-        self._display_sample_chunks(chunks, doc_summary)
-        
-        st.success(f"Successfully processed {len(documents)} documents into {len(chunks)} chunks!")
-
-    def _build_document_summary(self, chunks: List) -> Dict[str, Dict]:
-        """Build summary statistics by document"""
-        doc_summary = {}
-        for chunk in chunks:
-            source = chunk.metadata.get('source', 'Unknown')
-            if source not in doc_summary:
-                doc_summary[source] = {'chunks': 0, 'total_chars': 0}
-            doc_summary[source]['chunks'] += 1
-            doc_summary[source]['total_chars'] += len(chunk.page_content)
-        return doc_summary
-
-    def _display_sample_chunks(self, chunks: List, doc_summary: Dict):
-        """Display sample chunks for inspection"""
-        with st.expander("View Sample Chunks"):
-            if chunks:
-                selected_source = st.selectbox(
-                    "Select document:",
-                    list(doc_summary.keys())
-                )
-                
-                source_chunks = [c for c in chunks if c.metadata.get('source') == selected_source]
-                
-                for i, chunk in enumerate(source_chunks[:3]):  # Show first 3 chunks
-                    st.subheader(f"Chunk {i+1}")
-                    st.text_area(
-                        f"Content (Chunk {chunk.metadata.get('chunk_id', i)}):",
-                        chunk.page_content,
-                        height=150,
-                        key=f"chunk_{selected_source}_{i}"
-                    )
-                    st.json(chunk.metadata)
