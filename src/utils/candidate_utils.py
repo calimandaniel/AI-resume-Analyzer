@@ -30,20 +30,3 @@ class CandidateUtils:
         chunks_ordered = sorted(chunks, key=lambda x: x.metadata.get('chunk_id', 0))
         return "\n".join([chunk.page_content for chunk in chunks_ordered])
     
-    @staticmethod
-    def calculate_candidate_scores(candidates: Dict) -> Dict:
-        """Calculate average scores for candidates"""
-        for filename in candidates:
-            chunks_count = len(candidates[filename]['chunks'])
-            candidates[filename]['avg_score'] = candidates[filename]['total_score'] / chunks_count
-        
-        return candidates
-    
-    @staticmethod
-    def sort_candidates_by_score(candidates: Dict) -> List[tuple]:
-        """Sort candidates by average score"""
-        return sorted(
-            candidates.items(), 
-            key=lambda x: x[1]['avg_score'], 
-            reverse=True
-        )

@@ -51,14 +51,6 @@ class Settings:
     @property
     def llm_model(self) -> str:
         return self.config.get('model', {}).get('llm_model', 'gemini-1.5-flash')
-    
-    @property
-    def max_candidates(self) -> int:
-        return self.config.get('processing', {}).get('max_candidates', 5)
-    
-    @property
-    def vector_search_k(self) -> int:
-        return self.config.get('processing', {}).get('vector_search_k', 20)
 
 # Global settings instance
 settings = Settings()
